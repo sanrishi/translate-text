@@ -1,11 +1,10 @@
-"""DeepL Translate Text — capability_key=deepl-translate-text.
+"""MyMemory Translate Text — capability_key=mymemory-translate-text.
 
-Read-only adapter that translates a single text string with the DeepL API.
-The source language is auto-detected by DeepL; callers provide a target
-language code.
+Read-only adapter that translates a single UTF-8 text string with the
+MyMemory Translation API.
 
-DeepL API reference:
-  https://developers.deepl.com/api-reference/translate
+Endpoint:
+  GET https://api.mymemory.translated.net/get?q=<text>&langpair=<src>|<tgt>
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-
 from siglume_api_sdk import (
     AppAdapter,
     AppCategory,
@@ -28,14 +26,11 @@ from siglume_api_sdk import (
     PriceModel,
 )
 
-CAPABILITY_KEY = "deepl-translate-text"
-SOURCE = "DeepL API"
-SOURCE_URL = "https://developers.deepl.com/api-reference/translate"
+CAPABILITY_KEY = "mymemory-translate-text"
+SOURCE = "MyMemory Translation API"
+SOURCE_URL = "https://api.mymemory.translated.net/get"
 
 DEFAULT_TIMEOUT_SECONDS = 12.0
-
-_FORMALITY_CHOICES = ("default", "more", "less", "prefer_more", "prefer_less")
-_SPLIT_SENTENCES_CHOICES = ("0", "1", "nonewlines")
 
 
 class AdapterError(Exception):
@@ -124,12 +119,15 @@ def require_str(value: Any, *, field: str, max_len: int = 256) -> str:
     return value.strip()
 
 
-def require_choice(value: Any, *, field: str, choices: tuple[str, ...]) -> str:
-    s = require_str(value, field=field)
-    if s not in choices:
-        raise InvalidInputError(
-            f"`{field}` must be one of {list(choices)}, got {s!r}."
-        )
+def _normalize_lang(value: Any | None, *, field: str, default: str | None) -> str:
+    if value is None:
+        if default is None:
+            raise InvalidInputError(f"`{field}` is required.")
+        return default
+    s = require_str(value, field=field, max_len=16).lower()
+    # Keep validation loose (MyMemory uses ISO-like codes).
+    if not s.replace("-", "").isalpha() or len(s) < 2:
+        raise InvalidInputError(f"`{field}` must look like a language code.")
     return s
 
 
@@ -187,142 +185,52 @@ def fetch_json(
     raise UpstreamUnavailableError(f"Unknown failure calling {url}")
 
 
-def _require_bool(value: Any, *, field: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    raise InvalidInputError(f"`{field}` must be a boolean.")
-
-
-def _normalize_target_lang(value: Any) -> str:
-    s = require_str(value, field="target_lang", max_len=16).upper()
-    # DeepL uses ISO 639-1 + optional region variant, e.g. EN, EN-US, PT-BR.
-    # Keep validation intentionally loose to avoid breaking new codes.
-    if not s.replace("-", "").isalpha() or not (2 <= len(s) <= 8):
-        raise InvalidInputError(
-            "`target_lang` must look like a DeepL language code such as "
-            "'EN', 'JA', 'EN-US', or 'PT-BR'."
-        )
-    return s
-
-
-def _auth_key() -> str | None:
-    return (
-        os.environ.get("DEEPL_AUTH_KEY")
-        or os.environ.get("DEEPL_API_KEY")
-        or os.environ.get("DEEPL_APIKEY")
-    )
-
-
-def _base_url(auth_key: str) -> str:
-    override = os.environ.get("DEEPL_API_BASE_URL") or os.environ.get("DEEPL_BASE_URL")
-    if override:
-        return override.rstrip("/")
-    # DeepL Free auth keys typically end with ":fx" and use api-free.
-    if auth_key.strip().endswith(":fx"):
-        return "https://api-free.deepl.com"
-    return "https://api.deepl.com"
-
-
 def do_translate(input_params: dict[str, Any], *, http=fetch_json) -> dict[str, Any]:
     text = require_str(input_params.get("text"), field="text", max_len=20_000)
-    target_lang = _normalize_target_lang(input_params.get("target_lang"))
+    source_lang = _normalize_lang(input_params.get("source_lang"), field="source_lang", default="en")
+    target_lang = _normalize_lang(input_params.get("target_lang"), field="target_lang", default=None)
 
-    preserve_formatting: bool | None = None
-    if "preserve_formatting" in input_params:
-        preserve_formatting = _require_bool(
-            input_params.get("preserve_formatting"), field="preserve_formatting"
-        )
-
-    formality: str | None = None
-    if "formality" in input_params and input_params.get("formality") is not None:
-        formality = require_choice(
-            input_params.get("formality"),
-            field="formality",
-            choices=_FORMALITY_CHOICES,
-        )
-
-    split_sentences: str | None = None
-    if "split_sentences" in input_params and input_params.get("split_sentences") is not None:
-        split_sentences = require_choice(
-            input_params.get("split_sentences"),
-            field="split_sentences",
-            choices=_SPLIT_SENTENCES_CHOICES,
-        )
-
-    key = _auth_key()
-    if not key:
-        raise InvalidInputError(
-            "Missing DeepL API key. Set `DEEPL_AUTH_KEY` (or `DEEPL_API_KEY`) "
-            "in the environment."
-        )
-
-    url = f"{_base_url(key)}/v2/translate"
-    timeout = float(os.environ.get("DEEPL_TIMEOUT_SECONDS") or DEFAULT_TIMEOUT_SECONDS)
-
-    body: dict[str, Any] = {
-        "text": [text],
-        "target_lang": target_lang,
-        "show_billed_characters": True,
-    }
-    if preserve_formatting is not None:
-        body["preserve_formatting"] = preserve_formatting
-    if formality is not None:
-        body["formality"] = formality
-    if split_sentences is not None:
-        body["split_sentences"] = split_sentences
-
+    timeout = float(os.environ.get("MYMEMORY_TIMEOUT_SECONDS") or DEFAULT_TIMEOUT_SECONDS)
     payload = http(
-        url,
-        method="POST",
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Authorization": f"DeepL-Auth-Key {key}",
-        },
-        json_body=body,
+        SOURCE_URL,
+        method="GET",
+        params={"q": text, "langpair": f"{source_lang}|{target_lang}"},
         timeout=timeout,
         retries=2,
     )
 
-    translations = payload.get("translations")
-    if not isinstance(translations, list) or not translations:
-        raise EmptyResultError("DeepL returned no translations.")
-    first = translations[0] if isinstance(translations[0], dict) else None
-    if not first or "text" not in first:
-        raise EmptyResultError("DeepL returned an unexpected response shape.")
-
-    translated_text = first.get("text")
-    detected_source_lang = first.get("detected_source_language")
-    billed_characters = payload.get("billed_characters")
+    try:
+        translated_text = payload["responseData"]["translatedText"]
+    except Exception as exc:
+        raise EmptyResultError("MyMemory returned an unexpected response shape.") from exc
+    if not isinstance(translated_text, str):
+        raise EmptyResultError("MyMemory returned a non-string translation.")
 
     out: dict[str, Any] = {
         "input_text": text,
         "translated_text": translated_text,
-        "detected_source_lang": detected_source_lang,
+        "source_lang": source_lang,
         "target_lang": target_lang,
     }
-    if billed_characters is not None:
-        out["billed_characters"] = billed_characters
-
-    summary = f"Translated {len(text)} chars to {target_lang} via DeepL."
+    summary = f"Translated {len(text)} chars {source_lang}->{target_lang} via MyMemory."
     return with_envelope(
         out,
         summary=summary,
         source=SOURCE,
         source_url=SOURCE_URL,
         cache_ttl_seconds=0,
-        attribution="DeepL",
+        attribution="MyMemory",
     )
 
 
-class DeepLTranslateTextApp(AppAdapter):
+class MyMemoryTranslateTextApp(AppAdapter):
     def manifest(self) -> AppManifest:
         return AppManifest(
             capability_key=CAPABILITY_KEY,
-            name="DeepL Translate Text",
+            name="MyMemory Translate Text",
             job_to_be_done=(
-                "Translate a short text string into a target language using DeepL, "
-                "with automatic source-language detection."
+                "Translate a short text string into a target language using the "
+                "MyMemory Translation API."
             ),
             category=AppCategory.COMMUNICATION,
             permission_class=PermissionClass.READ_ONLY,
@@ -334,22 +242,17 @@ class DeepLTranslateTextApp(AppAdapter):
             currency="USD",
             jurisdiction="US",
             data_residency="US",
-            short_description="Translate text with DeepL (auto-detect source language).",
+            short_description="Translate text with MyMemory (defaults source_lang to en).",
             description=(
-                "Calls the DeepL API /v2/translate endpoint to translate a single "
-                "UTF-8 text string. The adapter does not require a source language; "
-                "DeepL auto-detects it. Supports optional `formality`, "
-                "`split_sentences`, and `preserve_formatting` parameters."
+                "Calls MyMemory's public translation endpoint. Provide `text` and "
+                "`target_lang` (e.g. 'ja'); `source_lang` defaults to 'en'."
             ),
-            docs_url=(
-                "https://github.com/taihei-05/siglume-personal-apis/tree/main/"
-                "apis/translation/translate_text"
-            ),
-            support_contact="https://github.com/taihei-05/siglume-personal-apis/issues",
-            compatibility_tags=["translation", "deepl", "language", "read-only"],
+            docs_url="https://github.com/sanrishi/translate-text",
+            support_contact="https://github.com/sanrishi/translate-text/issues",
+            compatibility_tags=["translation", "mymemory", "language", "read-only"],
             example_prompts=[
-                "Translate 'Hello, world!' to Japanese.",
-                "Translate this email to German with a more formal tone.",
+                "Translate 'hello' to Japanese.",
+                "Translate this sentence from English to French.",
             ],
         )
 
@@ -357,21 +260,21 @@ class DeepLTranslateTextApp(AppAdapter):
         try:
             if ctx.execution_kind == ExecutionKind.DRY_RUN:
                 params = ctx.input_params or {}
-                text = str(params.get("text") or "Hello, world!")
-                target = str(params.get("target_lang") or "JA").upper()
+                text = str(params.get("text") or "hello")
+                source_lang = str(params.get("source_lang") or "en").lower()
+                target_lang = str(params.get("target_lang") or "ja").lower()
                 output = with_envelope(
                     {
                         "input_text": text,
-                        "translated_text": f"[dry_run] ({target}) {text}",
-                        "detected_source_lang": "EN",
-                        "target_lang": target,
-                        "billed_characters": len(text),
+                        "translated_text": f"[dry_run] ({source_lang}->{target_lang}) {text}",
+                        "source_lang": source_lang,
+                        "target_lang": target_lang,
                     },
-                    summary=f"[dry_run] Translated {len(text)} chars to {target}.",
+                    summary=f"[dry_run] Translated {len(text)} chars {source_lang}->{target_lang}.",
                     source=SOURCE,
                     source_url=SOURCE_URL,
                     cache_ttl_seconds=0,
-                    attribution="DeepL",
+                    attribution="MyMemory",
                 )
             else:
                 output = do_translate(ctx.input_params or {})
@@ -393,7 +296,6 @@ class DeepLTranslateTextApp(AppAdapter):
         return ["translate_text", "translation"]
 
 
-# Hook for `siglume test .` — the harness picks up the first AppAdapter in the
-# module. We also expose a callable for the FastAPI server.
-def build_app() -> DeepLTranslateTextApp:
-    return DeepLTranslateTextApp()
+def build_app() -> MyMemoryTranslateTextApp:
+    return MyMemoryTranslateTextApp()
+

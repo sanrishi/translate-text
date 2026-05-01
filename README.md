@@ -1,12 +1,12 @@
-# DeepL Translate Text (`deepl-translate-text`)
+# MyMemory Translate Text (`mymemory-translate-text`)
 
-Read-only adapter that translates a single UTF-8 text string with the DeepL API.
-The source language is auto-detected by DeepL; callers specify `target_lang`.
+Read-only adapter that translates a single UTF-8 text string with the MyMemory Translation API.
+`source_lang` defaults to `en` when omitted; callers specify `target_lang`.
 
 ## What it does
 
-- Calls DeepL `POST /v2/translate` with `text` and `target_lang`
-- Returns `translated_text`, `detected_source_lang`, and optional `billed_characters`
+- Calls MyMemory `GET /get` with `q` and `langpair=<source>|<target>`
+- Returns `translated_text`, `source_lang`, and `target_lang`
 - Includes standard provenance fields (`source`, `source_url`, `fetched_at`, `cache_ttl_seconds`)
 
 ## Input
@@ -14,51 +14,39 @@ The source language is auto-detected by DeepL; callers specify `target_lang`.
 ```json
 {
   "text": "Hello, world!",
-  "target_lang": "JA",
-  "formality": "default",
-  "split_sentences": "1",
-  "preserve_formatting": false
+  "source_lang": "en",
+  "target_lang": "ja"
 }
 ```
 
 Required:
 - `text`: text to translate
-- `target_lang`: DeepL language code (e.g. `EN`, `JA`, `DE`, `EN-US`, `PT-BR`)
-
-Optional:
-- `formality`: `default` | `more` | `less` | `prefer_more` | `prefer_less`
-- `split_sentences`: `0` | `1` | `nonewlines`
-- `preserve_formatting`: boolean
+- `source_lang`: (optional) language code, defaults to `en`
+- `target_lang`: language code (e.g. `ja`, `fr`, `de`)
 
 ## Output (shape)
 
 ```json
 {
-  "summary": "Translated 13 chars to JA via DeepL.",
+  "summary": "Translated 13 chars en->ja via MyMemory.",
   "input_text": "Hello, world!",
   "translated_text": "こんにちは、世界！",
-  "detected_source_lang": "EN",
-  "target_lang": "JA",
-  "billed_characters": 13,
-  "source": "DeepL API",
-  "source_url": "https://developers.deepl.com/api-reference/translate",
+  "source_lang": "en",
+  "target_lang": "ja",
+  "source": "MyMemory Translation API",
+  "source_url": "https://api.mymemory.translated.net/get",
   "fetched_at": "2026-05-01T00:00:00Z",
   "cache_ttl_seconds": 0,
-  "attribution": "DeepL"
+  "attribution": "MyMemory"
 }
 ```
 
 ## Configuration
 
-Set a DeepL API key in the environment:
-
-```powershell
-$env:DEEPL_AUTH_KEY = "<your-deepl-auth-key>"
-```
+No API key required.
 
 Optional:
-- `DEEPL_API_BASE_URL`: override base URL (defaults to `https://api-free.deepl.com` for Free keys ending in `:fx`, else `https://api.deepl.com`)
-- `DEEPL_TIMEOUT_SECONDS`: request timeout (default `12`)
+- `MYMEMORY_TIMEOUT_SECONDS`: request timeout (default `12`)
 
 ## Local checks
 
@@ -69,4 +57,3 @@ siglume test .
 ```
 
 `siglume test .` uses `dry_run` and does not call DeepL.
-

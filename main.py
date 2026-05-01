@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
+import httpx
 from siglume_api_sdk import ExecutionContext, ExecutionKind
 
 from adapter import build_app
@@ -14,8 +15,24 @@ _ADAPTER = build_app()
 
 @app.get("/health")
 def health() -> dict[str, Any]:
+    try:
+        resp = httpx.get(
+            "https://api.mymemory.translated.net/get",
+            params={"q": "hello", "langpair": "en|ja"},
+            timeout=10.0,
+            follow_redirects=True,
+        )
+        resp.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Upstream healthcheck failed: {exc!r}")
+
     manifest = _ADAPTER.manifest()
-    return {"ok": True, "service": "translate-text", "capability_key": manifest.capability_key}
+    return {
+        "ok": True,
+        "service": "translate-text",
+        "capability_key": manifest.capability_key,
+        "upstream_ok": True,
+    }
 
 
 @app.post("/invoke")

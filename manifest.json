@@ -1,8 +1,8 @@
 {
-  "capability_key": "deepl-translate-text",
+  "capability_key": "mymemory-translate-text",
   "version": "0.1.0",
-  "name": "DeepL Translate Text",
-  "job_to_be_done": "Translate a short text string into a target language using DeepL, with automatic source-language detection.",
+  "name": "MyMemory Translate Text",
+  "job_to_be_done": "Translate a short text string into a target language using the MyMemory Translation API.",
   "category": "communication",
   "permission_class": "read-only",
   "approval_mode": "auto",
@@ -15,17 +15,16 @@
   "jurisdiction": "US",
   "applicable_regulations": [],
   "data_residency": "US",
-  "short_description": "Translate text with DeepL (auto-detect source language).",
-  "description": "Calls the DeepL API /v2/translate endpoint to translate a single UTF-8 text string. The adapter does not require a source language; DeepL auto-detects it. Supports optional formality, sentence splitting, and formatting preservation options.",
-  "docs_url": "https://github.com/taihei-05/siglume-personal-apis/tree/main/apis/translation/translate_text",
-  "support_contact": "https://github.com/taihei-05/siglume-personal-apis/issues",
+  "short_description": "Translate text with MyMemory (defaults source_lang to en).",
+  "description": "Calls the MyMemory Translation API endpoint GET /get to translate a single UTF-8 text string. Provide `target_lang` and optionally `source_lang` (defaults to en).",
+  "docs_url": "https://github.com/sanrishi/translate-text",
+  "support_contact": "https://github.com/sanrishi/translate-text/issues",
   "seller_homepage_url": "",
   "seller_social_url": "",
-  "compatibility_tags": ["translation", "deepl", "language", "read-only"],
+  "compatibility_tags": ["translation", "mymemory", "language", "read-only"],
   "latency_tier": "normal",
   "example_prompts": [
     "Translate 'Hello, world!' to Japanese.",
     "Translate this email to German with a more formal tone."
   ]
 }
-

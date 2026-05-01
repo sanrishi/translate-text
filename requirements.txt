@@ -1,6 +1,4 @@
 fastapi
 uvicorn
 httpx
-deepl
 siglume-api-sdk
-

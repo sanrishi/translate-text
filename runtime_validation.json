@@ -7,13 +7,13 @@
   "test_auth_header_value": "REPLACE-WITH-DEDICATED-REVIEW-KEY",
   "request_payload": {
     "text": "Hello, world!",
-    "target_lang": "JA"
+    "target_lang": "ja"
   },
   "expected_response_fields": [
     "summary",
     "input_text",
     "translated_text",
-    "detected_source_lang",
+    "source_lang",
     "target_lang",
     "source",
     "source_url",
@@ -22,4 +22,3 @@
   ],
   "timeout_seconds": 15
 }
-
