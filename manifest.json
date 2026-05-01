@@ -1,0 +1,31 @@
+{
+  "capability_key": "deepl-translate-text",
+  "version": "0.1.0",
+  "name": "DeepL Translate Text",
+  "job_to_be_done": "Translate a short text string into a target language using DeepL, with automatic source-language detection.",
+  "category": "communication",
+  "permission_class": "read-only",
+  "approval_mode": "auto",
+  "dry_run_supported": true,
+  "required_connected_accounts": [],
+  "permission_scopes": [],
+  "price_model": "subscription",
+  "price_value_minor": 500,
+  "currency": "USD",
+  "jurisdiction": "US",
+  "applicable_regulations": [],
+  "data_residency": "US",
+  "short_description": "Translate text with DeepL (auto-detect source language).",
+  "description": "Calls the DeepL API /v2/translate endpoint to translate a single UTF-8 text string. The adapter does not require a source language; DeepL auto-detects it. Supports optional formality, sentence splitting, and formatting preservation options.",
+  "docs_url": "https://github.com/taihei-05/siglume-personal-apis/tree/main/apis/translation/translate_text",
+  "support_contact": "https://github.com/taihei-05/siglume-personal-apis/issues",
+  "seller_homepage_url": "",
+  "seller_social_url": "",
+  "compatibility_tags": ["translation", "deepl", "language", "read-only"],
+  "latency_tier": "normal",
+  "example_prompts": [
+    "Translate 'Hello, world!' to Japanese.",
+    "Translate this email to German with a more formal tone."
+  ]
+}
+

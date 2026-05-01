@@ -1,0 +1,25 @@
+{
+  "public_base_url": "https://example.com",
+  "healthcheck_url": "https://example.com/health",
+  "invoke_url": "https://example.com/invoke",
+  "invoke_method": "POST",
+  "test_auth_header_name": "X-Siglume-Review-Key",
+  "test_auth_header_value": "REPLACE-WITH-DEDICATED-REVIEW-KEY",
+  "request_payload": {
+    "text": "Hello, world!",
+    "target_lang": "JA"
+  },
+  "expected_response_fields": [
+    "summary",
+    "input_text",
+    "translated_text",
+    "detected_source_lang",
+    "target_lang",
+    "source",
+    "source_url",
+    "fetched_at",
+    "cache_ttl_seconds"
+  ],
+  "timeout_seconds": 15
+}
+
