@@ -3,8 +3,25 @@
   "job_to_be_done": "Translate a short text string into a target language using DeepL so the agent can rewrite user-provided content across languages.",
   "summary_for_model": "Translates a single text string with DeepL. Source language is auto-detected; caller supplies `target_lang` (e.g. EN, JA, EN-US). Returns translated text plus detected source language and provenance fields.",
   "trigger_conditions": [
-    "The user asks to translate a sentence, paragraph, or message into another language.",
-    "The agent needs a high-quality translation for user-provided text and the target language is known."
+    "The agent needs to translate text from one language to another.",
+    "The owner provides text and a target language code (e.g. EN, JA, FR, DE).",
+    "The agent is processing multilingual content and needs a specific language output.",
+    "The owner asks to convert document or UI strings into a target language."
+  ],
+  "usage_hints": [
+    "Use target_lang codes from the DeepL API spec (e.g. 'EN-US', 'JA', 'FR', 'DE', 'ZH').",
+    "Source language is auto-detected if not provided; omit it unless accuracy is critical.",
+    "For large texts, split into chunks under 5000 characters for best results."
+  ],
+  "result_hints": [
+    "Return the translated_text field directly to the owner.",
+    "Include detected_source_lang in the response summary so the owner knows what was detected.",
+    "If translation confidence is low, flag it in the summary."
+  ],
+  "error_hints": [
+    "If target_lang is unsupported, list the valid DeepL language codes in the error message.",
+    "If DEEPL_API_KEY is not set, return a clear misconfiguration error.",
+    "If text is empty or whitespace only, return a validation error before calling DeepL."
   ],
   "do_not_use_when": [
     "The user is asking for cultural/idiomatic rewriting rather than a translation (use a writing tool instead).",
@@ -120,4 +137,3 @@
     "`upstream_rate_limited` — DeepL rate limit reached."
   ]
 }
-
