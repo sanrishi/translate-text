@@ -11,25 +11,12 @@ DeepL API reference:
 from __future__ import annotations
 
 import os
-import sys
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 
-# Make `shared.*` importable when this adapter is loaded via `siglume test .`
-# (cwd = this directory) or imported by tests / FastAPI server.
-def _find_apis_root() -> Path:
-    for parent in Path(__file__).resolve().parents:
-        if (parent / "shared").is_dir():
-            return parent
-    raise RuntimeError("Cannot find apis/shared from adapter path")
-
-
-_APIS_ROOT = _find_apis_root()
-if str(_APIS_ROOT) not in sys.path:
-    sys.path.insert(0, str(_APIS_ROOT))
-
-from siglume_api_sdk import (  # noqa: E402
+from siglume_api_sdk import (
     AppAdapter,
     AppCategory,
     AppManifest,
@@ -41,15 +28,6 @@ from siglume_api_sdk import (  # noqa: E402
     PriceModel,
 )
 
-from shared.envelope import with_envelope  # noqa: E402
-from shared.errors import (  # noqa: E402
-    AdapterError,
-    EmptyResultError,
-    InvalidInputError,
-)
-from shared.http_client import fetch_json  # noqa: E402
-from shared.validation import require_choice, require_str  # noqa: E402
-
 CAPABILITY_KEY = "deepl-translate-text"
 SOURCE = "DeepL API"
 SOURCE_URL = "https://developers.deepl.com/api-reference/translate"
@@ -58,6 +36,155 @@ DEFAULT_TIMEOUT_SECONDS = 12.0
 
 _FORMALITY_CHOICES = ("default", "more", "less", "prefer_more", "prefer_less")
 _SPLIT_SENTENCES_CHOICES = ("0", "1", "nonewlines")
+
+
+class AdapterError(Exception):
+    error_code: str = "internal_error"
+    http_status: int = 500
+
+    def __init__(self, message: str, *, details: Any = None) -> None:
+        super().__init__(message)
+        self.message = message
+        self.details = details
+
+    def to_payload(self, *, source: str | None = None) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "error": True,
+            "error_code": self.error_code,
+            "message": self.message,
+        }
+        if self.details is not None:
+            out["details"] = self.details
+        if source:
+            out["source"] = source
+        return out
+
+
+class InvalidInputError(AdapterError):
+    error_code = "invalid_input"
+    http_status = 400
+
+
+class EmptyResultError(AdapterError):
+    error_code = "empty_result"
+    http_status = 200
+
+
+class UpstreamUnavailableError(AdapterError):
+    error_code = "upstream_unavailable"
+    http_status = 503
+
+
+class UpstreamRateLimitedError(AdapterError):
+    error_code = "upstream_rate_limited"
+    http_status = 429
+
+
+class UpstreamNotFoundError(AdapterError):
+    error_code = "upstream_not_found"
+    http_status = 404
+
+
+class UpstreamTimeoutError(AdapterError):
+    error_code = "upstream_timeout"
+    http_status = 504
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def with_envelope(
+    payload: dict[str, Any],
+    *,
+    source: str,
+    source_url: str,
+    cache_ttl_seconds: int,
+    attribution: str | None = None,
+    fetched_at: str | None = None,
+    summary: str | None = None,
+) -> dict[str, Any]:
+    out: dict[str, Any] = dict(payload)
+    if summary is not None:
+        out.setdefault("summary", summary)
+    out["source"] = source
+    out["source_url"] = source_url
+    out["fetched_at"] = fetched_at or _utc_now_iso()
+    out["cache_ttl_seconds"] = cache_ttl_seconds
+    if attribution:
+        out["attribution"] = attribution
+    return out
+
+
+def require_str(value: Any, *, field: str, max_len: int = 256) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidInputError(f"`{field}` must be a non-empty string.")
+    if len(value) > max_len:
+        raise InvalidInputError(f"`{field}` exceeds max length {max_len}.")
+    return value.strip()
+
+
+def require_choice(value: Any, *, field: str, choices: tuple[str, ...]) -> str:
+    s = require_str(value, field=field)
+    if s not in choices:
+        raise InvalidInputError(
+            f"`{field}` must be one of {list(choices)}, got {s!r}."
+        )
+    return s
+
+
+def fetch_json(
+    url: str,
+    *,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    params: dict[str, Any] | None = None,
+    json_body: Any | None = None,
+    timeout: float = 8.0,
+    retries: int = 2,
+) -> Any:
+    last_exc: Exception | None = None
+    for attempt in range(max(1, retries)):
+        try:
+            with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+                resp = client.request(
+                    method.upper(),
+                    url,
+                    headers=dict(headers or {}),
+                    params=dict(params or {}),
+                    json=json_body,
+                )
+        except httpx.TimeoutException as exc:
+            last_exc = UpstreamTimeoutError(f"Timed out calling {url} after {timeout}s")
+            if attempt + 1 < retries:
+                continue
+            raise last_exc from exc
+        except httpx.HTTPError as exc:
+            last_exc = UpstreamUnavailableError(f"HTTP error calling {url}: {exc!r}")
+            if attempt + 1 < retries:
+                continue
+            raise last_exc from exc
+
+        if 200 <= resp.status_code < 300:
+            try:
+                return resp.json()
+            except Exception as exc:
+                raise UpstreamUnavailableError(
+                    f"Upstream returned non-JSON for {url}: {exc!r}"
+                ) from exc
+
+        message = f"{method.upper()} {url}"
+        if resp.status_code == 404:
+            raise UpstreamNotFoundError(f"Upstream returned 404 for {message}")
+        if resp.status_code == 429:
+            raise UpstreamRateLimitedError(f"Upstream rate-limited: {message}")
+        if resp.status_code in (500, 502, 503, 504) and attempt + 1 < retries:
+            continue
+        raise UpstreamUnavailableError(f"Upstream {resp.status_code} on {message}")
+
+    if last_exc:
+        raise last_exc
+    raise UpstreamUnavailableError(f"Unknown failure calling {url}")
 
 
 def _require_bool(value: Any, *, field: str) -> bool:
