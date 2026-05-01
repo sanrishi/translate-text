@@ -36,10 +36,8 @@ async def invoke(
         task_type="translate_text",
         input_params=body,
         execution_kind=ExecutionKind.LIVE,
-        request_headers={"X-Siglume-Review-Key": x_siglume_review_key} if x_siglume_review_key else {},
     )
     result = await _ADAPTER.execute(ctx)
     if not result.success:
         raise HTTPException(status_code=500, detail=getattr(result, "error_message", None) or "Execution failed")
     return result.output
-
