@@ -52,7 +52,7 @@ async def invoke(
         owner_user_id="siglume",
         task_type="translate_text",
         input_params=body,
-        execution_kind=ExecutionKind.LIVE,
+        execution_kind=ExecutionKind.ACTION,
     )
     result = await _ADAPTER.execute(ctx)
     if not result.success:
